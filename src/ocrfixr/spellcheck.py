@@ -9,7 +9,6 @@ from collections import Counter
 from transformers import pipeline
 from symspellpy import SymSpell, Verbosity
 from metaphone import doublemetaphone
-import pkg_resources
 
 
 ### Load in project resources
@@ -39,8 +38,7 @@ ignore_suggestions = ast.literal_eval(ignore_suggestions)
 
 # setup symspell spellchecker parameters
 sym_spell = SymSpell(max_dictionary_edit_distance=2, prefix_length=7)
-dictionary_path = pkg_resources.resource_filename(
-    "symspellpy", "frequency_dictionary_en_82_765.txt")
+dictionary_path = str(importlib_resources.files("symspellpy") / "frequency_dictionary_en_82_765.txt")
 # term_index is the column of the term and count_index is the
 # column of the term frequency
 sym_spell.load_dictionary(dictionary_path, term_index=0, count_index=1)

@@ -3,7 +3,7 @@
 
 import unittest
 import time
-from ocrfixr import spellcheck
+from ocrfixr2 import spellcheck
 
 
 # Define timing function

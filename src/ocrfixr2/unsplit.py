@@ -4,7 +4,7 @@ import re
 import importlib_resources
 
 
-ocrfixr = importlib_resources.files("ocrfixr")
+ocrfixr = importlib_resources.files("ocrfixr2")
 word_set = (ocrfixr / "data" / "SCOWL_70.txt").read_text().split()
 word_set = set(word_set)
 

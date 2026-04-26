@@ -14,7 +14,7 @@ from collections import Counter
 def main():
 
     parser = argparse.ArgumentParser(
-        prog="ocrfixr",
+        prog="ocrfixr2",
         description="Provides context-based spellcheck suggestions for input text.",
     )
 
@@ -58,14 +58,14 @@ def main():
             "---- This file appears to have words split across lines, which can cause issues with the spellchecker"
         )
         print("---- Merging split words back together...")
-        from ocrfixr import unsplit
+        from ocrfixr2 import unsplit
 
         fixed_text = unsplit(Full_Book).fix()
         data = fixed_text.split("\n")
     else:
         data = Full_Book.split("\n")
 
-    from ocrfixr import spellcheck
+    from ocrfixr2 import spellcheck
 
     # Add line numbers
     q = []

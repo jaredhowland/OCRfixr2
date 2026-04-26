@@ -1,22 +1,22 @@
 [project]
-name = "OCRfixr"
+name = "ocrfixr2"
 version = "2.0.0"
 description = "A contextual spellchecker for OCR output"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 authors = [
   {name = "Jack McMahon", email = "OCRfixr@mcmahon.work"},
-  {name = "Jared Howland", email = "OCRfixr@jaredhowland.com"},
+  {name = "Jared Howland", email = "OCRfixr2@jaredhowland.com"},
 ]
 maintainers = [
-  {name = "Jared Howland", email = "OCRfixr@jaredhowland.com"}
+  {name = "Jared Howland", email = "OCRfixr2@jaredhowland.com"}
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
 keywords = [
-    'ocrfixr','spellcheck', 'OCR', 'contextual', 'BERT'
+    'ocrfixr','ocrfixr2','spellcheck', 'OCR', 'contextual', 'BERT'
 ]
 
 requires-python = ">=3.12"
@@ -32,10 +32,10 @@ dependencies = [
 ]
 
 [project.scripts]
-ocrfixr = "ocrfixr.run_ocrfixr:main"
+ocrfixr2 = "ocrfixr2.run_ocrfixr:main"
 
 [project.urls]
-"Repository" = "https://github.com/jaredhowland/OCRfixr"
+"Repository" = "https://github.com/jaredhowland/OCRfixr2"
 
 [build-system]
 requires = ["uv_build >= 0.11.7, <0.12.0"]

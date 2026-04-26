@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from ocrfixr import unsplit
+from ocrfixr2 import unsplit
 
 
 class TestStringMethods(unittest.TestCase):

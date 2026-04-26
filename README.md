@@ -114,6 +114,21 @@ Word context is drawn from all sentences in the current paragraph (designated by
 
 
 
+## Pre-downloading the model (optional)
+
+To avoid downloading the transformer model on every run, pre-download it into the project-local cache. A helper script is provided to populate the cache directory used by OCRfixr2.
+
+Usage (run once on the machine where you'll run the CLI):
+
+```bash
+python scripts/pull_model.py --model bert-base-uncased --cache src/ocrfixr2/model_cache
+```
+
+The default project-local cache directory is `src/ocrfixr2/model_cache`. You can also set the OCRFIXR_MODEL_CACHE environment variable to point to a different directory.
+
+For fully offline operation after pre-download, set environment variables or use `local_files_only` options in transformers (see transformers docs). After downloading, subsequent runs of `uv run ocrfixr2 ...` will reuse the cached files.
+
+
 ## Credits
 
 - __symspellpy__ powers spellcheck suggestions

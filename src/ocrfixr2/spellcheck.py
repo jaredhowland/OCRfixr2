@@ -1,16 +1,17 @@
 """Main module."""
 
-from transformers import logging
-
-logging.set_verbosity_error()
 import re
 import string
 import ast
-import importlib_resources
+import importlib.resources as importlib_resources
 from collections import Counter
-from transformers import pipeline
+from typing import Dict, Any
+from transformers import pipeline, logging
 from symspellpy import SymSpell, Verbosity
 from metaphone import doublemetaphone
+
+# Reduce transformer verbosity after imports
+logging.set_verbosity_error()
 
 
 ### Load in project resources
@@ -28,20 +29,28 @@ ignore_misreads = (
 ignore_set_from_pkg = set(ignore_misreads)
 
 # dict of common scannos to check for (bypasses the context check, since these are clear mappings)
-common_scannos = (ocrfixr / "data" / "Scannos_Common.txt").read_text(encoding="utf-8")
-common_scannos = ast.literal_eval(common_scannos)
+_common_scannos_text = (ocrfixr / "data" / "Scannos_Common.txt").read_text(
+    encoding="utf-8"
+)
+# Escape backslashes to avoid SyntaxWarning on invalid escape sequences when evaluating the literal
+_common_scannos_text_escaped = _common_scannos_text.replace("\\", "\\\\")
+common_scannos: Dict[str, Any] = ast.literal_eval(_common_scannos_text_escaped)
 common = set(common_scannos)
 
 # dict of specifically tricky scannos to check for - misspellings that create real words (arid - and)
-stealth_scannos = (ocrfixr / "data" / "Scannos_Stealth.txt").read_text(encoding="utf-8")
-stealth_scannos = ast.literal_eval(stealth_scannos)
+_stealth_scannos_text = (ocrfixr / "data" / "Scannos_Stealth.txt").read_text(
+    encoding="utf-8"
+)
+_stealth_scannos_text_escaped = _stealth_scannos_text.replace("\\", "\\\\")
+stealth_scannos: Dict[str, Any] = ast.literal_eval(_stealth_scannos_text_escaped)
 stealth = set(stealth_scannos)
 
 # dict of OCRfixr suggestions that are known to be bad. This list prevents them from ever being suggested.
-ignore_suggestions = (ocrfixr / "data" / "Ignore_These_Suggestions.txt").read_text(
-    encoding="utf-8"
-)
-ignore_suggestions = ast.literal_eval(ignore_suggestions)
+_ignore_suggestions_text = (
+    ocrfixr / "data" / "Ignore_These_Suggestions.txt"
+).read_text(encoding="utf-8")
+_ignore_suggestions_text_escaped = _ignore_suggestions_text.replace("\\", "\\\\")
+ignore_suggestions: Dict[str, Any] = ast.literal_eval(_ignore_suggestions_text_escaped)
 # ignore_suggestions = set(ignore_suggestions)
 
 # setup symspell spellchecker parameters
@@ -87,21 +96,21 @@ class spellcheck:
     def _SPLIT_PARAGRAPHS(self, text):
         # Separate string into paragraphs - this keeps local context for BERT, just in smaller chunks
         # If needed, split up excessively long paragraphs - BERT model errors out when >512 words, so break long paragraphs at 500 words
-        tokens = re.findall("[^\n]+\n{0,}|(?:\w+\s+[^\n]){500}", text)
+        tokens = re.findall("[^\n]+\n{0,}|(?:\\w+\\s+[^\n]){500}", text)
         return tokens
 
     # Find all mispelled words in a passage.
     # Note: OCRfixr ignores all words with leading uppercasing (including ALL CAPS), as these are assumed to be proper nouns, which fall outside of the scope of what a dictionary-based approach can accomplish.
     def _LIST_MISREADS(self):
         tokens = re.split("[ \n]", self.text)
-        tokens = [l.strip() for l in tokens]
+        tokens = [tok.strip() for tok in tokens]
 
         # Drop hyphenated words, those with apostrophes (which may be intentional slang), words that are just numbers, and words broken across lines. Note: This does risk missing valid misreads, but our goal is to avoid making "bad" corrections above all else
         # Also, drop all items with leading caps (ie. proper nouns)
         # Also, drop all words with trailing numbers flanked by punctuation, indicating a footnote reference (money.4, item[1]) rather than a misspelling
         # Also, drop any 1-character "words"
 
-        no_hyphens = re.compile(".*-.*|.*'.*|.*\.{3,}.*|.*’.*|[0-9]+")
+        no_hyphens = re.compile(r".*-.*|.*'.*|.*\.{3,}.*|.*’.*|[0-9]+")
         no_caps = re.compile("[^A-Z]{2,}")
         no_footnotes = re.compile(".*[0-9]{1,}[^A-z]?$")
         no_roman_nums = re.compile("[xlcviXLCVI.:,-;]+$")
@@ -123,7 +132,7 @@ class spellcheck:
         ]
 
         # then, remove punct from each remaining token (such as trailing commas, periods, quotations ('' & ""), but KEEPING contractions).
-        no_punctuation = [l.strip(string.punctuation + "”“’‘") for l in words]
+        no_punctuation = [w.strip(string.punctuation + "”“’‘") for w in words]
         words_to_check = [
             x for x in no_punctuation if len(x) > 1 and not all_nums.match(x)
         ]
@@ -228,25 +237,28 @@ class spellcheck:
             return text_corrected
 
     def ___INSERT_NEWLINES(self, string):
-        return re.sub("([^\n]{64})([^\s]{1,})", "\\1\\2\n", string, 0, re.DOTALL)
+        return re.sub("([^\n]{64})([^\\s]{1,})", "\\1\\2\n", string, 0, re.DOTALL)
 
-    def _CREATE_DIALOGUE(self, context, old_word, new_word):
+    def _CREATE_DIALOGUE(self, context, old_word, new_word) -> bool:
 
         import tkinter as tk
         from tkinter import ttk
 
+        # Use a closure variable to capture the user's choice; default to False (ignore)
+        proceed = False
+
         def ___PRESS_IGNORE():
-            global proceed
+            nonlocal proceed
             proceed = False
             root.destroy()
-            ### TODO - add IGNORE ALL for repeated misreads of the same word (>2 times in text) - should only ask ONCE
+            # TODO - add IGNORE ALL for repeated misreads of the same word (>2 times in text) - should only ask ONCE
 
         def ___PRESS_UPDATE():
-            global proceed
+            nonlocal proceed
             proceed = True
             root.destroy()
-            ### TODO - add ACCEPT ALL for repeated misreads of the same word (>2 times in text) - should only ask ONCE
-            ### TODO - create exit-valve from interactive mode, where user can stop generation of pop-up windows. This should cancel all further updates to the text.
+            # TODO - add ACCEPT ALL for repeated misreads of the same word (>2 times in text) - should only ask ONCE
+            # TODO - create exit-valve from interactive mode, where user can stop generation of pop-up windows. This should cancel all further updates to the text.
 
         root = tk.Tk()
         root.title("Spellcheck Suggestion")
@@ -295,6 +307,8 @@ class spellcheck:
 
         root.mainloop()
 
+        return bool(proceed)
+
     # Creates a dict of valid replacements for misspellings. If bert and symspell do not have a match for a given misspelling, it makes no changes to the word.
     # When common_scannos is activated, that limited list of words bypass the spellcheck/context check
     # Note: find-replace is not instance-specific, it is paragraph specific..."yov" will be replaced with "you" in all instances found in that section of text. It would be rare, but this may cause issues when a repeated scanno is valid & not valid within the same paragraph
@@ -313,7 +327,9 @@ class spellcheck:
 
             # for stealth scannos - these are valid (yet incorrect) words. So, instead of SUGGEST_SPELLCHECK (which would return the same word supplied), take the value from the stealth_scanno dict, which is the desired word to check for in BERT context (arid --> and)
             elif self.common_scannos == "T" and i in stealth:
-                SC.append(stealth_scannos.get(i).split(" "))
+                val = stealth_scannos.get(i)
+                if val is not None:
+                    SC.append(val.split(" "))
                 SB = self.__SUGGEST_BERT(
                     text=self.__SET_MASK(i, "[MASK]", self.text),
                     number_to_return=self.top_k,
@@ -341,12 +357,12 @@ class spellcheck:
                         # just confirm that both word halves are valid
                         if "." in i or "," in i:
                             mw = "".join(spellcheck)
-                            fw = re.findall("^[^\s,]+", mw).pop()
-                            sw = re.findall("[^\s]+$", mw).pop()
+                            fw = re.findall(r"^[^\s,]+", mw).pop()
+                            sw = re.findall(r"[^\s]+$", mw).pop()
 
                             if fw in word_set and sw in word_set:
                                 # if first letter after period split is uppercased, retain it and add a period ('ended.He' --> 'ended. He')
-                                if len(re.findall("\.{1,}([A-Z][a-z]+)", i)) > 0:
+                                if len(re.findall(r"\.{1,}([A-Z][a-z]+)", i)) > 0:
                                     fw = fw + ". "
                                     sw = str.title(sw)
                                     mw = fw + sw
@@ -361,7 +377,7 @@ class spellcheck:
                             SC.append(spellcheck)
 
                             mw = "".join(spellcheck)
-                            fw = re.findall("^[^\s]+", mw).pop()
+                            fw = re.findall(r"^[^\s]+", mw).pop()
                             SB = self.__SUGGEST_BERT(
                                 text=self.__SET_MASK(i, fw + " [MASK]", self.text),
                                 number_to_return=self.top_k,
@@ -451,8 +467,8 @@ class spellcheck:
                 # if user selects IGNORE, then just return "", which means no replacement is made
                 # otherwise, the suggested change is retained in the fixes dict
 
-                self._CREATE_DIALOGUE(self.text, key, value)
-                if proceed == False:
+                proceed = self._CREATE_DIALOGUE(self.text, key, value)
+                if not proceed:
                     no_fix = {key: ""}
                     fixes.update(no_fix)
 

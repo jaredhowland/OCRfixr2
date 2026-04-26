@@ -1,7 +1,7 @@
 """Main module."""
 
 import re
-import importlib_resources
+import importlib.resources as importlib_resources
 
 
 ocrfixr = importlib_resources.files("ocrfixr2")
@@ -23,7 +23,7 @@ class unsplit:
 
     def _LIST_SPLIT_WORDS(self):
         tokens = re.split(" |(?<!-)\n", self.text)
-        tokens = [l.strip() for l in tokens]
+        tokens = [tok.strip() for tok in tokens]
 
         # pick up anything with a -\n string in it (except items with trailing "words" that are all numbers - these are end of page hyphens)
         regex = re.compile(".+[^-](-\n).+")
@@ -53,9 +53,9 @@ class unsplit:
         W0_common = W0 in common_words
         W1_real = W1 in word_set
         W2_real = W2 in word_set
-        Has_proper = all([W1.istitle() == False, W2.istitle() == True])
+        Has_proper = all([not W1.istitle(), W2.istitle()])
         Has_num = any(filter(str.isdigit, W1) or filter(str.isdigit, W2))
-        End_pg = "--File" in W2 or W2.isdigit() == True
+        End_pg = "--File" in W2 or W2.isdigit()
 
         # Decides whether a split word should retain its hyphen
         # To accomplish this, OCRfixr checks the hyphenated word against the accepted word list:
@@ -70,11 +70,11 @@ class unsplit:
         # TODO: Also add a leading * to the first word on the following page
         # -*\n+[0-9]?-+File:\s[0-9]+.png-+\n[A-z]+ ----> replace .png-+\n with .png-+\n*
 
-        if End_pg == True:
+        if End_pg:
             return end_pg_hyphen
         else:
-            if W0_real == True:
-                if W0_common == True:
+            if W0_real:
+                if W0_common:
                     return remove_hyphen
                 elif all([W1_real, W2_real]):
                     return unsure_hyphen
@@ -82,7 +82,7 @@ class unsplit:
                     return remove_hyphen
 
             else:
-                if all([W1_real, W2_real]) or Has_num == True or Has_proper == True:
+                if all([W1_real, W2_real]) or Has_num or Has_proper:
                     return keep_hyphen
                 else:
                     return remove_hyphen
@@ -100,7 +100,7 @@ class unsplit:
             # return(text_corrected)
             text_corrected = self.text
             for i, j in fixes.items():
-                text_corrected = re.sub(re.escape(i) + "(\s|\n)?", j, text_corrected)
+                text_corrected = re.sub(re.escape(i) + "(\\s|\n)?", j, text_corrected)
             return text_corrected
 
     def _FIND_REPLACEMENTS(self, splits):

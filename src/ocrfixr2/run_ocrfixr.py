@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-from transformers import logging
-
-logging.set_verbosity_error()
-import sys
 import re
 from tqdm import tqdm
 from collections import Counter
+from transformers import logging
+
+logging.set_verbosity_error()
 
 
 def main():
@@ -85,7 +84,7 @@ def main():
     # Have OCRfixr just output a list of all the words it checked (ranked by frequency), rather than spellchecking
     # This is intended as a diagnostic measure to see if OCRfixr is missing a large number of suggestions for valid (fixable) words
 
-    if args.misspells == True:
+    if args.misspells:
         counts = ct_misspells(Full_Book, 0)
         with open(args.outfile, "w", encoding="utf-8") as f:
             for key, value in counts.items():
@@ -93,14 +92,14 @@ def main():
         print("---- File has been written to " + args.outfile)
 
         # for this path, don't continue any further
-        exit()
+        return
 
     ### WARP10 Option ============================================================
     # Have OCRfixr ignore any word (>3 characters long) that pops up 10+ times
     # This allows for unrecognized words that are likely correct to be left alone, since they show up consistently in the text
     # OCRfixr runs fewer check cycles = faster execution
 
-    if args.Warp10 == True:
+    if args.Warp10:
         print("---- Engaging Warp10!")
         counts = ct_misspells(Full_Book, 3)
         over_ten = {key: value for (key, value) in counts.items() if value >= 10}
@@ -118,7 +117,7 @@ def main():
     else:
         ignored_words = []
 
-    if args.context == True:
+    if args.context:
         context_fl = "T"
     else:
         context_fl = "F"

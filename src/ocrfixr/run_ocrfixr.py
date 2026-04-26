@@ -14,7 +14,7 @@ from collections import Counter
 def main():
 
     parser = argparse.ArgumentParser(
-        prog="run_ocrfixr",
+        prog="ocrfixr",
         description="Provides context-based spellcheck suggestions for input text.",
     )
 
@@ -51,7 +51,7 @@ def main():
     # read in full file to check if the text has split words (which will cause false misreads to show up)
     # -- do this first to throw error early if file is invalid
     print("---- Loading text....")
-    Full_Book = open(sys.argv[1], "r", encoding="utf-8").read()
+    Full_Book = open(args.text, "r", encoding="utf-8").read()
 
     if len(re.findall("[A-z]-\n", Full_Book)) > 30:
         print(
@@ -90,7 +90,7 @@ def main():
         with open(args.outfile, "w", encoding="utf-8") as f:
             for key, value in counts.items():
                 f.write("%s:%s\n" % (key, value))
-        print("---- File has been written to " + sys.argv[2])
+        print("---- File has been written to " + args.outfile)
 
         # for this path, don't continue any further
         exit()
@@ -146,7 +146,7 @@ def main():
         file.writelines(items + "\n")
     file.close()
 
-    print("---- File has been written to " + sys.argv[2])
+    print("---- File has been written to " + args.outfile)
 
 
 if __name__ == "__main__":

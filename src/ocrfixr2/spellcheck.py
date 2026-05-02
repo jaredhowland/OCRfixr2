@@ -74,18 +74,24 @@ if _cache_dir_env:
 else:
     # default to a model_cache directory next to the package
     CACHE_DIR = Path(__file__).resolve().parent / "model_cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Lazy-load BERT model on first use (deferred until first fix() call)
+_unmasker = None
 
 
-# Load tokenizer and model into the project-local cache (or use pre-cached files)
-_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=str(CACHE_DIR))
-_model = AutoModelForMaskedLM.from_pretrained(MODEL_NAME, cache_dir=str(CACHE_DIR))
-
-unmasker = pipeline(
-    "fill-mask",
-    model=_model,
-    tokenizer=_tokenizer,
-)
+def _get_unmasker():
+    """Return the BERT fill-mask pipeline, loading it lazily on first call."""
+    global _unmasker
+    if _unmasker is None:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=str(CACHE_DIR))
+        _model = AutoModelForMaskedLM.from_pretrained(MODEL_NAME, cache_dir=str(CACHE_DIR))
+        _unmasker = pipeline(
+            "fill-mask",
+            model=_model,
+            tokenizer=_tokenizer,
+        )
+    return _unmasker
 
 
 class spellcheck:
@@ -227,7 +233,7 @@ class spellcheck:
 
     # Suggest a set of the 15 words that best fit given the context of the misread
     def __SUGGEST_BERT(self, text, number_to_return=15):
-        context_suggest = unmasker(text)
+        context_suggest = _get_unmasker()(text)
         suggested_words = [x.get("token_str") for x in context_suggest][
             :number_to_return
         ]
@@ -260,12 +266,14 @@ class spellcheck:
     def ___INSERT_NEWLINES(self, string):
         return re.sub("([^\n]{64})([^\\s]{1,})", "\\1\\2\n", string, 0, re.DOTALL)
 
-    def _CREATE_DIALOGUE(self, context, old_word, new_word) -> bool:
+    def _CREATE_DIALOGUE(self, context, old_word, new_word):
+        """Show suggestion dialog. Returns True=update, False=ignore, None=cancel all."""
 
         import tkinter as tk
         from tkinter import ttk
 
         # Use a closure variable to capture the user's choice; default to False (ignore)
+        # None means user cancelled all remaining suggestions
         proceed = False
 
         def ___PRESS_IGNORE():
@@ -279,10 +287,18 @@ class spellcheck:
             proceed = True
             root.destroy()
             # TODO - add ACCEPT ALL for repeated misreads of the same word (>2 times in text) - should only ask ONCE
-            # TODO - create exit-valve from interactive mode, where user can stop generation of pop-up windows. This should cancel all further updates to the text.
+
+        def ___PRESS_CANCEL():
+            nonlocal proceed
+            proceed = None  # sentinel: cancel all remaining suggestions
+            root.destroy()
+
+        def ___ON_ESCAPE(event):
+            ___PRESS_CANCEL()
 
         root = tk.Tk()
         root.title("Spellcheck Suggestion")
+        root.bind("<Escape>", ___ON_ESCAPE)
 
         content = ttk.Frame(root, padding=(3, 3, 12, 15))
         frame = ttk.Frame(content, borderwidth=5, relief="ridge", width=500, height=75)
@@ -293,6 +309,7 @@ class spellcheck:
         new_entry = ttk.Label(content, text=new_word, font=("arial", 18, "bold"))
         update = ttk.Button(content, text="Update", command=___PRESS_UPDATE)
         ignore = ttk.Button(content, text="Ignore", command=___PRESS_IGNORE)
+        cancel = ttk.Button(content, text="Cancel All", command=___PRESS_CANCEL)
 
         content.grid(column=0, row=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         frame.grid(
@@ -314,8 +331,9 @@ class spellcheck:
             pady=5,
             padx=5,
         )
-        update.grid(column=3, row=5)
-        ignore.grid(column=4, row=5)
+        update.grid(column=2, row=5)
+        ignore.grid(column=3, row=5)
+        cancel.grid(column=4, row=5)
 
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
@@ -324,11 +342,12 @@ class spellcheck:
         content.columnconfigure(2, weight=3)
         content.columnconfigure(3, weight=1)
         content.columnconfigure(4, weight=1)
+        content.columnconfigure(5, weight=1)
         content.rowconfigure(1, weight=1)
 
         root.mainloop()
 
-        return bool(proceed)
+        return proceed
 
     # Creates a dict of valid replacements for misspellings. If bert and symspell do not have a match for a given misspelling, it makes no changes to the word.
     # When common_scannos is activated, that limited list of words bypass the spellcheck/context check
@@ -486,9 +505,13 @@ class spellcheck:
                 #### INTERACTIVE FUNCTION
                 # create dialogue box containing: context, old_word, new_word
                 # if user selects IGNORE, then just return "", which means no replacement is made
+                # if user selects CANCEL ALL, stop processing further suggestions
                 # otherwise, the suggested change is retained in the fixes dict
 
                 proceed = self._CREATE_DIALOGUE(self.text, key, value)
+                if proceed is None:
+                    # user cancelled — stop all further suggestions
+                    break
                 if not proceed:
                     no_fix = {key: ""}
                     fixes.update(no_fix)

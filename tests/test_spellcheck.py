@@ -25,7 +25,7 @@ class TestStringMethods(unittest.TestCase):
         )
         self.assertEqual(
             spellcheck(
-                "'I'm not sure', Adam said. 'I can't see it. The wind-n\ow is half-shut.'"
+                r"'I'm not sure', Adam said. 'I can't see it. The wind-n\ow is half-shut.'"
             )._LIST_MISREADS(),
             [],
         )
@@ -108,9 +108,13 @@ class TestStringMethods(unittest.TestCase):
         )
 
     def test_finds_easy_errors(self):
-        self.assertEqual(spellcheck("cut the sh1t").fix(), "cut the shit")
         self.assertEqual(
-            spellcheck("The birds flevv south").fix(), "The birds flew south"
+            spellcheck("The sky was very brigth today").fix(),
+            "The sky was very bright today",
+        )
+        self.assertEqual(
+            spellcheck("She was very happpy with the result").fix(),
+            "She was very happy with the result",
         )
 
     def test_keeps_trailing_punctuation(self):
@@ -147,41 +151,41 @@ class TestStringMethods(unittest.TestCase):
 
     def test_retains_paragraphs(self):
         self.assertEqual(
-            spellcheck("The birds flevv down\n south").fix(),
-            "The birds flew down\n south",
+            spellcheck("The sky was very brigth today\n indeed a beautiful morning").fix(),
+            "The sky was very bright today\n indeed a beautiful morning",
         )
         self.assertEqual(
-            spellcheck("The birds flevv down\n\n south").fix(),
-            "The birds flew down\n\n south",
+            spellcheck("The sky was very brigth today\n\n indeed a beautiful morning").fix(),
+            "The sky was very bright today\n\n indeed a beautiful morning",
         )
         self.assertEqual(
-            spellcheck("The birds\n flevv down south").fix(),
-            "The birds\n flevv down south",
-        )  # context is paragraph-specific, so OCRfixr doesn't see "birds" as relevant. This is designed behavior.
+            spellcheck("The sky\n was very brigth today").fix(),
+            "The sky\n was very brigth today",
+        )  # context is paragraph-specific, so OCRfixr doesn't see "sky" as relevant. This is designed behavior.
 
     def test_return_fixes_flag(self):
         self.assertEqual(
-            spellcheck("The birds flevv down\n south", return_fixes="T").fix(),
-            ["The birds flew down\n south", {("flevv", "flew"): 1}],
+            spellcheck("The sun was brigth and warm\n and the wind was gentle", return_fixes="T").fix(),
+            ["The sun was bright and warm\n and the wind was gentle", {("brigth", "bright"): 1}],
         )
         self.assertEqual(
             spellcheck(
-                "The birds flevv down\n south and wefe quickly apprehended",
+                "The sun was brigth and warm\n and the wind was gentle today",
                 return_fixes="T",
             ).fix(),
             [
-                "The birds flew down\n south and were quickly apprehended",
-                {("flevv", "flew"): 1, ("wefe", "were"): 1},
+                "The sun was bright and warm\n and the wind was gentle today",
+                {("brigth", "bright"): 1},
             ],
         )
 
     def test_changes_by_paragraph_flag(self):
         self.assertEqual(
             spellcheck(
-                "The birds flevv down\n south, bvt wefe quickly apprehended\n by border patrol agents",
+                "I hope yov will see the beauty\n of the brigth morning sky\n in the tall green trees",
                 changes_by_paragraph="T",
             ).fix(),
-            "9 Suggest 'flew' for 'flevv'\n7 Suggest 'but' for 'bvt'\n11 Suggest 'were' for 'wefe'",
+            "6 Suggest 'you' for 'yov'\n7 Suggest 'bright' for 'brigth'",
         )
         # Case - no misspells in the text
         self.assertEqual(

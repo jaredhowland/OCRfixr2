@@ -12,7 +12,9 @@ from pathlib import Path
 
 
 def main():
-    p = argparse.ArgumentParser(description="Pull HF model into a local cache directory")
+    p = argparse.ArgumentParser(
+        description="Pull HF model into a local cache directory"
+    )
     p.add_argument("--model", default="bert-base-uncased", help="Model name or path")
     p.add_argument(
         "--cache",
@@ -38,5 +40,5 @@ def main():
         raise
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

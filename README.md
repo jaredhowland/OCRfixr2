@@ -126,6 +126,10 @@ python scripts/pull_model.py --model bert-base-uncased --cache src/ocrfixr2/mode
 
 The default project-local cache directory is `src/ocrfixr2/model_cache`. You can also set the OCRFIXR_MODEL_CACHE environment variable to point to a different directory.
 
+For faster and more reliable downloads, set the HF_TOKEN environment variable with a Hugging Face access token: `export HF_TOKEN=...`. This enables higher rate limits and avoids unauthenticated throttling.
+
+To avoid setuptools/torch compatibility warnings during installation, the build system requires a setuptools version below 82. The pyproject.toml build-system now includes `setuptools<82` to help keep compatible builds.
+
 For fully offline operation after pre-download, set environment variables or use `local_files_only` options in transformers (see transformers docs). After downloading, subsequent runs of `uv run ocrfixr2 ...` will reuse the cached files.
 
 

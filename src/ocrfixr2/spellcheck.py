@@ -6,7 +6,9 @@ import ast
 import importlib.resources as importlib_resources
 from collections import Counter
 from typing import Dict, Any
-from transformers import pipeline, logging
+import os
+from pathlib import Path
+from transformers import pipeline, logging, AutoTokenizer, AutoModelForMaskedLM
 from symspellpy import SymSpell, Verbosity
 from metaphone import doublemetaphone
 
@@ -64,7 +66,26 @@ sym_spell.load_dictionary(dictionary_path, term_index=0, count_index=1)
 
 
 # Set BERT to look for the 30 most likely words in position of the misspelled word
-unmasker = pipeline("fill-mask", model="bert-base-uncased", top_k=30)
+# Configure model name and use a project-local cache directory by default
+MODEL_NAME = os.getenv("OCRFIXR_MODEL", "bert-base-uncased")
+_cache_dir_env = os.getenv("OCRFIXR_MODEL_CACHE")
+if _cache_dir_env:
+    CACHE_DIR = Path(_cache_dir_env)
+else:
+    # default to a model_cache directory next to the package
+    CACHE_DIR = Path(__file__).resolve().parent / "model_cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# Load tokenizer and model into the project-local cache (or use pre-cached files)
+_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=str(CACHE_DIR))
+_model = AutoModelForMaskedLM.from_pretrained(MODEL_NAME, cache_dir=str(CACHE_DIR))
+
+unmasker = pipeline(
+    "fill-mask",
+    model=_model,
+    tokenizer=_tokenizer,
+)
 
 
 class spellcheck:

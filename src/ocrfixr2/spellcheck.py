@@ -423,8 +423,31 @@ class spellcheck:
         context_scroll.config(command=context_text.yview)
         context_text.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         context_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+
+        # Define highlight tag for the misspelled word
+        context_text.tag_configure(
+            "highlight",
+            font=("arial", 12, "bold"),
+            foreground="#d32f2f",
+        )
+
         # Insert context text
-        context_text.insert("1.0", self.___INSERT_NEWLINES(context))
+        ctx_lines = self.___INSERT_NEWLINES(context)
+        context_text.insert("1.0", ctx_lines)
+
+        # Find and highlight every occurrence of the misspelled word
+        search_term = old_word
+        start = "1.0"
+        while True:
+            pos = context_text.search(
+                search_term, start, stopindex=tk.END, regexp=False
+            )
+            if not pos:
+                break
+            end = f"{pos}+{len(search_term)}c"
+            context_text.tag_add("highlight", pos, end)
+            start = end
+
         context_text.config(state="disabled")
 
         # Right side: suggestion details + buttons

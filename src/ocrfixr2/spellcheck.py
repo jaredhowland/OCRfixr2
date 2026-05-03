@@ -131,6 +131,7 @@ class spellcheck:
         custom_dict=None,
         confidence_threshold=0.0,
         ignore_first_word=False,
+        progress_file=None,
     ):
         self.text = text
         self.changes_by_paragraph = changes_by_paragraph
@@ -149,6 +150,13 @@ class spellcheck:
         # IGNORE_SPLIT_WORDS: skip the first word of each paragraph
         # (it may be the second half of a word split across pages)
         self.ignore_first_word = ignore_first_word
+        # Save/load progress for interactive mode
+        self.progress_file = progress_file
+        # Load existing progress if available
+        if self.progress_file and Path(self.progress_file).is_file():
+            self._interactive_decisions = self._LOAD_PROGRESS()
+        else:
+            self._interactive_decisions = {}
 
     ### DEFINE ALL HELPER FUNCTIONS
     # ------------------------------------------------------
@@ -360,6 +368,28 @@ class spellcheck:
     def ___INSERT_NEWLINES(self, string):
         return re.sub("([^\n]{64})([^\\s]{1,})", "\\1\\2\n", string, 0, re.DOTALL)
 
+    def _SAVE_PROGRESS(self):
+        """Save interactive decisions to a JSON file."""
+        import json
+
+        if not self.progress_file:
+            return
+        data = {
+            "decisions": dict(self._interactive_decisions),
+            "timestamp": str(Path(self.progress_file).stat().st_mtime),
+        }
+        Path(self.progress_file).write_text(json.dumps(data, indent=2), encoding="utf-8")
+        logger.info(f"Progress saved to {self.progress_file}")
+
+    def _LOAD_PROGRESS(self):
+        """Load interactive decisions from a JSON file."""
+        import json
+
+        data = json.loads(Path(self.progress_file).read_text(encoding="utf-8"))
+        decisions = data.get("decisions", {})
+        logger.info(f"Loaded {len(decisions)} saved decision(s) from {self.progress_file}")
+        return decisions
+
     def _CREATE_DIALOGUE(self, context, old_word, new_word):
         """Show suggestion dialog. Returns True=update, False=ignore, None=cancel all."""
 
@@ -385,6 +415,13 @@ class spellcheck:
             proceed = None  # sentinel: cancel all remaining suggestions
             root.destroy()
 
+        def ___PRESS_SAVE():
+            """Save current progress to disk and close dialog."""
+            self._SAVE_PROGRESS()
+            nonlocal proceed
+            proceed = None  # sentinel: cancel all remaining suggestions
+            root.destroy()
+
         def ___ON_ESCAPE(event):
             ___PRESS_CANCEL()
 
@@ -401,6 +438,10 @@ class spellcheck:
         root.geometry(f"{ww}x{wh}+{x}+{y}")
         root.resizable(False, False)
 
+        # System default font
+        system_font = tk.font.nametofont("TkDefaultFont")
+        font_family = system_font.actual()["family"]
+
         # Top-level frame with grid layout: left=scrollable context, right=suggestion+buttons
         content = ttk.Frame(root, padding=10)
         content.grid(column=0, row=0, sticky=(tk.N, tk.S, tk.E, tk.W))
@@ -414,9 +455,9 @@ class spellcheck:
             context_frame,
             wrap="word",
             yscrollcommand=context_scroll.set,
-            font=("arial", 12),
-            height=12,
-            width=42,
+            font=(font_family, 16),
+            height=8,
+            width=38,
             padx=5,
             pady=5,
         )
@@ -427,7 +468,7 @@ class spellcheck:
         # Define highlight tag for the misspelled word
         context_text.tag_configure(
             "highlight",
-            font=("arial", 12, "bold"),
+            font=(font_family, 16, "bold"),
             foreground="#d32f2f",
         )
 
@@ -458,14 +499,14 @@ class spellcheck:
             row=0, column=0, sticky=(tk.W), padx=5, pady=(5, 0)
         )
         ttk.Label(
-            right_frame, text=old_word, font=("arial", 14, "bold")
+            right_frame, text=old_word, font=(font_family, 14, "bold")
         ).grid(row=1, column=0, sticky=(tk.W), padx=5, pady=5)
 
         ttk.Label(right_frame, text="Suggested:").grid(
             row=2, column=0, sticky=(tk.W), padx=5, pady=(10, 0)
         )
         ttk.Label(
-            right_frame, text=new_word, font=("arial", 14, "bold")
+            right_frame, text=new_word, font=(font_family, 14, "bold")
         ).grid(row=3, column=0, sticky=(tk.W), padx=5, pady=5)
 
         # Buttons row
@@ -477,8 +518,11 @@ class spellcheck:
         ttk.Button(btn_frame, text="Ignore", command=___PRESS_IGNORE).grid(
             row=0, column=1, padx=2
         )
-        ttk.Button(btn_frame, text="Cancel All", command=___PRESS_CANCEL).grid(
+        ttk.Button(btn_frame, text="Save", command=___PRESS_SAVE).grid(
             row=0, column=2, padx=2
+        )
+        ttk.Button(btn_frame, text="Cancel All", command=___PRESS_CANCEL).grid(
+            row=0, column=3, padx=2
         )
 
         # Grid weights: left context area grows, right side is fixed
@@ -754,6 +798,7 @@ class spellcheck:
                     custom_dict=self.custom_dict,
                     confidence_threshold=self.confidence_threshold,
                     ignore_first_word=self.ignore_first_word,
+                    progress_file=self.progress_file,
                 ).SINGLE_STRING_FIX()
             )
 

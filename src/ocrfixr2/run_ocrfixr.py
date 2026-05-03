@@ -184,6 +184,17 @@ def main():
         help="open tkinter dialog to accept/reject each suggestion. "
         "Requires a display (will not work headless).",
     )
+    # Save/load progress for interactive mode
+    parser.add_argument(
+        "-resume",
+        "--resume",
+        action="store_const",
+        const=True,
+        default=False,
+        dest="resume",
+        help="resume interactive spellcheck from saved progress. "
+        "Loads decisions from <input>.ocrfixr_progress.json.",
+    )
     # T14: Dry-run mode
     parser.add_argument(
         "-dry-run",
@@ -261,6 +272,9 @@ def main():
         # Always run unsplitter first to merge words split across lines
         full_book = unsplit(full_book).fix()
 
+        # Progress file for save/resume
+        progress_file = str(Path(input_path).with_suffix(".ocrfixr_progress.json"))
+
         logger.info(f"Opening interactive dialog for {os.path.basename(input_path)}...")
         result = spellcheck(
             full_book,
@@ -268,6 +282,7 @@ def main():
             common_scannos="T",
             custom_dict=custom_dict_words,
             confidence_threshold=args.confidence_threshold,
+            progress_file=progress_file,
         ).fix()
 
         # Write corrected text

@@ -105,6 +105,13 @@ def _get_unmasker():
             model=_model,
             tokenizer=_tokenizer,
         )
+        # WARM_UP: run a dummy inference to warm up the model
+        # This ensures the first real call doesn't have warm-up overhead
+        try:
+            _unmasker("This is a [MASK] sentence.")
+        except Exception:
+            # Ignore warm-up errors; model will work on real calls
+            pass
     return _unmasker
 
 
@@ -123,6 +130,7 @@ class spellcheck:
         full_paragraphs="F",
         custom_dict=None,
         confidence_threshold=0.0,
+        ignore_first_word=False,
     ):
         self.text = text
         self.changes_by_paragraph = changes_by_paragraph
@@ -138,6 +146,9 @@ class spellcheck:
         self.custom_dict = set(custom_dict) if custom_dict else set()
         # T11: Confidence scoring threshold (0.0 = no threshold)
         self.confidence_threshold = confidence_threshold
+        # IGNORE_SPLIT_WORDS: skip the first word of each paragraph
+        # (it may be the second half of a word split across pages)
+        self.ignore_first_word = ignore_first_word
 
     ### DEFINE ALL HELPER FUNCTIONS
     # ------------------------------------------------------
@@ -221,7 +232,11 @@ class spellcheck:
         # if a word is not in the SCOWL 70 word list, it is assumed to be a misspelling.
         # T12: also check custom dictionary if provided
         unrecognized = []
-        for i in words_to_check:
+        for idx, i in enumerate(words_to_check):
+            # IGNORE_SPLIT_WORDS: skip the first word of the text
+            # (it may be the second half of a word split across pages)
+            if idx == 0 and self.ignore_first_word:
+                continue
             if i not in word_set and i not in self.custom_dict:
                 unrecognized.append(i)
 
@@ -593,6 +608,11 @@ class spellcheck:
                 if fixes[key] == "":
                     del fixes[key]
 
+            # TODO: Track decisions per word so repeated misreads only prompt once
+            # _interactive_decisions maps word -> True (accept) or False (ignore)
+            if not hasattr(self, "_interactive_decisions"):
+                self._interactive_decisions = {}
+
             for key, value in fixes.items():
                 #### INTERACTIVE FUNCTION
                 # create dialogue box containing: context, old_word, new_word
@@ -600,10 +620,20 @@ class spellcheck:
                 # if user selects CANCEL ALL, stop processing further suggestions
                 # otherwise, the suggested change is retained in the fixes dict
 
+                # Check if we already decided on this word
+                if key in self._interactive_decisions:
+                    if not self._interactive_decisions[key]:
+                        # Previously ignored — mark as no change
+                        fixes[key] = ""
+                    # Previously accepted — keep the fix as-is
+                    continue
+
                 proceed = self._CREATE_DIALOGUE(self.text, key, value)
                 if proceed is None:
                     # user cancelled — stop all further suggestions
                     break
+                # Record decision for future repeated occurrences
+                self._interactive_decisions[key] = proceed
                 if not proceed:
                     no_fix = {key: ""}
                     fixes.update(no_fix)
@@ -675,6 +705,7 @@ class spellcheck:
                     full_paragraphs=self.full_paragraphs,
                     custom_dict=self.custom_dict,
                     confidence_threshold=self.confidence_threshold,
+                    ignore_first_word=self.ignore_first_word,
                 ).SINGLE_STRING_FIX()
             )
 
@@ -706,12 +737,5 @@ class spellcheck:
 
 
 # TODO - (ADD_DICTS) Need to add selectable foreign language dictionaries
-# TODO - (IGNORE_SPLIT_WORDS) need to ignore the first word of a new page, since these can be split words across pages (this may also just be tied up in the unsplit functionality, where this word should have a leading * to denote a split word)
 # TODO - (ADD_STEALTHOS) Need to add additional common stealth scannos to OCRfixr. Be mindful, as these can increase compute time hugely (eg. he/be). Shoot for words that are uncommon (arid --> and)
-# TODO - (FULL_PARAGRAPHS) Allow BERT context to draw from all lines in a full paragraph (currently resets at each newline -- this corresponds to 1 line of text in a Gutenberg text, and likely leads to degraded spellcheck performance due to loss of context). However, longer context window = slower performance
-#          > most useful case for this is when the MASKED word is the first or last word in the line
-#          > exploring the option of accepting synonyms for context words as valid spellcheck replacements (ex. "the dark, [MASK] swamp". wet --> damp)
 # TODO - (GutenBERT) fine-tune BERT model on Gutenberg texts, to improve relatedness of context suggestions
-# TODO - (WARM_UP) can we somehow negate the warm-up time for the transformers unmasker?
-# pipelines = 7 secs
-# symspellpy dictionary load = 3 seconds

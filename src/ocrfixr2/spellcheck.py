@@ -374,13 +374,11 @@ class spellcheck:
             nonlocal proceed
             proceed = False
             root.destroy()
-            # TODO - add IGNORE ALL for repeated misreads of the same word (>2 times in text) - should only ask ONCE
 
         def ___PRESS_UPDATE():
             nonlocal proceed
             proceed = True
             root.destroy()
-            # TODO - add ACCEPT ALL for repeated misreads of the same word (>2 times in text) - should only ask ONCE
 
         def ___PRESS_CANCEL():
             nonlocal proceed
@@ -403,70 +401,68 @@ class spellcheck:
         root.geometry(f"{ww}x{wh}+{x}+{y}")
         root.resizable(False, False)
 
-        content = ttk.Frame(root, padding=(3, 3, 12, 15))
-        frame = ttk.Frame(content, borderwidth=5, relief="ridge", width=500, height=75)
+        # Top-level frame with grid layout: left=scrollable context, right=suggestion+buttons
+        content = ttk.Frame(root, padding=10)
+        content.grid(column=0, row=0, sticky=(tk.N, tk.S, tk.E, tk.W))
 
-        # Scrollable context area so long paragraphs don't push buttons off-screen
-        context_frame = ttk.Frame(content)
+        # Left side: scrollable context area
+        context_frame = ttk.LabelFrame(content, text="Context", padding=5)
+        context_frame.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W), padx=(0, 5), pady=5)
+
         context_scroll = ttk.Scrollbar(context_frame, orient="vertical")
         context_text = tk.Text(
             context_frame,
             wrap="word",
             yscrollcommand=context_scroll.set,
-            font=("arial", 10),
-            bg="white",
-            state="disabled",
-            height=8,
+            font=("arial", 11),
+            height=10,
+            width=40,
+            padx=5,
+            pady=5,
         )
         context_scroll.config(command=context_text.yview)
-        context_scroll.pack(side="right", fill="y")
-        context_text.pack(side="left", fill="both", expand=True)
+        context_text.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        context_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
         # Insert context text
-        context_text.config(state="normal")
         context_text.insert("1.0", self.___INSERT_NEWLINES(context))
         context_text.config(state="disabled")
 
-        intro = ttk.Label(content, text="Found possible replacement for:")
-        old_entry = ttk.Label(content, text=old_word, font=("arial", 18, "bold"))
-        suggest = ttk.Label(content, text="Suggested:")
-        new_entry = ttk.Label(content, text=new_word, font=("arial", 18, "bold"))
-        update = ttk.Button(content, text="Update", command=___PRESS_UPDATE)
-        ignore = ttk.Button(content, text="Ignore", command=___PRESS_IGNORE)
-        cancel = ttk.Button(content, text="Cancel All", command=___PRESS_CANCEL)
+        # Right side: suggestion details + buttons
+        right_frame = ttk.Frame(content)
+        right_frame.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.W), pady=5)
 
-        content.grid(column=0, row=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-        frame.grid(
-            column=0, row=0, columnspan=3, rowspan=5, sticky=(tk.N, tk.S, tk.E, tk.W)
+        ttk.Label(right_frame, text="Found possible replacement for:").grid(
+            row=0, column=0, sticky=(tk.W), padx=5, pady=(5, 0)
         )
-        context_frame.grid(column=0, row=0, sticky=(tk.N, tk.S, tk.E, tk.W), pady=5, padx=5)
-        intro.grid(column=3, row=0, columnspan=2, sticky=(tk.N, tk.W), padx=5)
-        old_entry.grid(
-            column=3, row=1, columnspan=2, sticky=(tk.N, tk.E, tk.W), pady=5, padx=5
-        )
-        suggest.grid(
-            column=3, row=2, columnspan=2, sticky=(tk.N, tk.S, tk.E, tk.W), padx=5
-        )
-        new_entry.grid(
-            column=3,
-            row=3,
-            columnspan=2,
-            sticky=(tk.N, tk.S, tk.E, tk.W),
-            pady=5,
-            padx=5,
-        )
-        update.grid(column=2, row=5)
-        ignore.grid(column=3, row=5)
-        cancel.grid(column=4, row=5)
+        ttk.Label(
+            right_frame, text=old_word, font=("arial", 14, "bold")
+        ).grid(row=1, column=0, sticky=(tk.W), padx=5, pady=5)
 
-        root.columnconfigure(0, weight=1)
-        root.rowconfigure(0, weight=1)
-        content.columnconfigure(0, weight=3)
-        content.columnconfigure(1, weight=3)
-        content.columnconfigure(2, weight=3)
-        content.columnconfigure(3, weight=1)
-        content.columnconfigure(4, weight=1)
-        content.columnconfigure(5, weight=1)
-        content.rowconfigure(1, weight=1)
+        ttk.Label(right_frame, text="Suggested:").grid(
+            row=2, column=0, sticky=(tk.W), padx=5, pady=(10, 0)
+        )
+        ttk.Label(
+            right_frame, text=new_word, font=("arial", 14, "bold")
+        ).grid(row=3, column=0, sticky=(tk.W), padx=5, pady=5)
+
+        # Buttons row
+        btn_frame = ttk.Frame(right_frame)
+        btn_frame.grid(row=4, column=0, sticky=(tk.W), padx=5, pady=20)
+        ttk.Button(btn_frame, text="Update", command=___PRESS_UPDATE).grid(
+            row=0, column=0, padx=2
+        )
+        ttk.Button(btn_frame, text="Ignore", command=___PRESS_IGNORE).grid(
+            row=0, column=1, padx=2
+        )
+        ttk.Button(btn_frame, text="Cancel All", command=___PRESS_CANCEL).grid(
+            row=0, column=2, padx=2
+        )
+
+        # Grid weights: left context area grows, right side is fixed
+        content.columnconfigure(0, weight=1)
+        content.rowconfigure(0, weight=1)
+        context_frame.columnconfigure(0, weight=1)
+        context_frame.rowconfigure(0, weight=1)
 
         root.mainloop()
 

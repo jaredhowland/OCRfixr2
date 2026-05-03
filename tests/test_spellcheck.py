@@ -158,10 +158,12 @@ class TestStringMethods(unittest.TestCase):
             spellcheck("The sky was very brigth today\n\n indeed a beautiful morning").fix(),
             "The sky was very bright today\n\n indeed a beautiful morning",
         )
+        # With full_paragraphs=T (default), single-newline text is one paragraph,
+        # so BERT has full context and can correct "brigth" -> "bright"
         self.assertEqual(
             spellcheck("The sky\n was very brigth today").fix(),
-            "The sky\n was very brigth today",
-        )  # context is paragraph-specific, so OCRfixr doesn't see "sky" as relevant. This is designed behavior.
+            "The sky\n was very bright today",
+        )
 
     def test_return_fixes_flag(self):
         self.assertEqual(
@@ -180,12 +182,13 @@ class TestStringMethods(unittest.TestCase):
         )
 
     def test_changes_by_paragraph_flag(self):
+        # With full_paragraphs=T (default), positions are relative to the full paragraph
         self.assertEqual(
             spellcheck(
                 "I hope yov will see the beauty\n of the brigth morning sky\n in the tall green trees",
                 changes_by_paragraph="T",
             ).fix(),
-            "6 Suggest 'you' for 'yov'\n7 Suggest 'bright' for 'brigth'",
+            "6 Suggest 'you' for 'yov'\n38 Suggest 'bright' for 'brigth'",
         )
         # Case - no misspells in the text
         self.assertEqual(

@@ -43,17 +43,12 @@ def _process_single_file(args_tuple):
         with open(input_path, "r", encoding="utf-8") as f:
             full_book = f.read()
 
-        # Check for split words
-        if len(re.findall("[A-z]-\n", full_book)) > 30:
-            logger.info(f"  Merging split words in {os.path.basename(input_path)}...")
-            fixed_text = unsplit(full_book).fix()
-            data = fixed_text.split("\n")
-        else:
-            data = full_book.split("\n")
+        # Always run unsplitter first to merge words split across lines
+        fixed_text = unsplit(full_book).fix()
 
         # Add line numbers
         q = []
-        for number, line in enumerate(data):
+        for number, line in enumerate(fixed_text.split("\n")):
             q.append("%d:  %s" % (number + 1, line))
 
         # Warp10: ignore words appearing 10+ times
@@ -263,10 +258,8 @@ def main():
         with open(input_path, "r", encoding="utf-8") as f:
             full_book = f.read()
 
-        # Check for split words
-        if len(re.findall("[A-z]-\n", full_book)) > 30:
-            logger.info(f"  Merging split words in {os.path.basename(input_path)}...")
-            full_book = unsplit(full_book).fix()
+        # Always run unsplitter first to merge words split across lines
+        full_book = unsplit(full_book).fix()
 
         logger.info(f"Opening interactive dialog for {os.path.basename(input_path)}...")
         result = spellcheck(

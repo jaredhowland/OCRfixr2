@@ -127,7 +127,7 @@ class spellcheck:
         top_k=15,
         return_context="F",
         suggest_unsplit="T",
-        full_paragraphs="F",
+        full_paragraphs="T",
         custom_dict=None,
         confidence_threshold=0.0,
         ignore_first_word=False,

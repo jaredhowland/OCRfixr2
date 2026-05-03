@@ -177,6 +177,18 @@ def main():
         dest="misspells",
         help="option to return all of the words OCRfixr didn't recognize.",
     )
+    # Interactive mode (tkinter GUI)
+    parser.add_argument(
+        "-i",
+        "-interactive",
+        "--interactive",
+        action="store_const",
+        const=True,
+        default=False,
+        dest="interactive",
+        help="open tkinter dialog to accept/reject each suggestion. "
+        "Requires a display (will not work headless).",
+    )
     # T14: Dry-run mode
     parser.add_argument(
         "-dry-run",
@@ -238,6 +250,46 @@ def main():
         sys.exit(1)
 
     logger.info(f"Processing {len(input_files)} file(s)...")
+
+    # Interactive mode: only works with single file
+    if args.interactive:
+        if len(input_files) > 1:
+            logger.error("Interactive mode requires a single input file.")
+            sys.exit(1)
+
+        from ocrfixr2 import spellcheck, unsplit
+
+        input_path = input_files[0]
+        with open(input_path, "r", encoding="utf-8") as f:
+            full_book = f.read()
+
+        # Check for split words
+        if len(re.findall("[A-z]-\n", full_book)) > 30:
+            logger.info(f"  Merging split words in {os.path.basename(input_path)}...")
+            full_book = unsplit(full_book).fix()
+
+        logger.info(f"Opening interactive dialog for {os.path.basename(input_path)}...")
+        result = spellcheck(
+            full_book,
+            interactive="T",
+            common_scannos="T",
+            custom_dict=custom_dict_words,
+            confidence_threshold=args.confidence_threshold,
+        ).fix()
+
+        # Write corrected text
+        if args.outfile:
+            output_path = args.outfile
+        else:
+            output_path = str(Path(input_path).with_suffix("")) + ".fixed"
+
+        if not args.dry_run:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(result)
+            logger.info(f"Corrected text written to {output_path}")
+        else:
+            logger.info("Dry-run: corrected text not written")
+        return
 
     # Build output paths
     def _make_output_path(input_path):

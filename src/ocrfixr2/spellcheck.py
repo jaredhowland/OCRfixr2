@@ -405,7 +405,27 @@ class spellcheck:
 
         content = ttk.Frame(root, padding=(3, 3, 12, 15))
         frame = ttk.Frame(content, borderwidth=5, relief="ridge", width=500, height=75)
-        context = ttk.Label(content, text=self.___INSERT_NEWLINES(context))
+
+        # Scrollable context area so long paragraphs don't push buttons off-screen
+        context_frame = ttk.Frame(content)
+        context_scroll = ttk.Scrollbar(context_frame, orient="vertical")
+        context_text = tk.Text(
+            context_frame,
+            wrap="word",
+            yscrollcommand=context_scroll.set,
+            font=("arial", 10),
+            bg="white",
+            state="disabled",
+            height=8,
+        )
+        context_scroll.config(command=context_text.yview)
+        context_scroll.pack(side="right", fill="y")
+        context_text.pack(side="left", fill="both", expand=True)
+        # Insert context text
+        context_text.config(state="normal")
+        context_text.insert("1.0", self.___INSERT_NEWLINES(context))
+        context_text.config(state="disabled")
+
         intro = ttk.Label(content, text="Found possible replacement for:")
         old_entry = ttk.Label(content, text=old_word, font=("arial", 18, "bold"))
         suggest = ttk.Label(content, text="Suggested:")
@@ -418,7 +438,7 @@ class spellcheck:
         frame.grid(
             column=0, row=0, columnspan=3, rowspan=5, sticky=(tk.N, tk.S, tk.E, tk.W)
         )
-        context.grid(column=0, row=0, sticky=(tk.N, tk.S, tk.E, tk.W), pady=5, padx=5)
+        context_frame.grid(column=0, row=0, sticky=(tk.N, tk.S, tk.E, tk.W), pady=5, padx=5)
         intro.grid(column=3, row=0, columnspan=2, sticky=(tk.N, tk.W), padx=5)
         old_entry.grid(
             column=3, row=1, columnspan=2, sticky=(tk.N, tk.E, tk.W), pady=5, padx=5

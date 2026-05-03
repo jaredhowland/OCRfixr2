@@ -414,9 +414,9 @@ class spellcheck:
             context_frame,
             wrap="word",
             yscrollcommand=context_scroll.set,
-            font=("arial", 11),
-            height=10,
-            width=40,
+            font=("arial", 13),
+            height=20,
+            width=45,
             padx=5,
             pady=5,
         )

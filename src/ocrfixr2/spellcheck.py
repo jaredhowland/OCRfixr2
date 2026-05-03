@@ -148,10 +148,26 @@ class spellcheck:
                 if re.match(r"^\n{2,}$", part):
                     # This is a separator, keep it as-is
                     paragraphs.append(part)
-                else:
-                    # Split long paragraphs at 500 words to stay within BERT's context window
-                    chunks = re.findall(r"[^\n]+\n{0,}|(?:\w+\s+[^\n]){500}", part)
-                    paragraphs.extend(chunks)
+                elif part.strip():
+                    # Non-empty content block — keep as a single paragraph
+                    # (don't split into lines; BERT gets full paragraph context)
+                    # Only split if the paragraph exceeds BERT's 500-word safety limit
+                    word_count = len(part.split())
+                    if word_count > 500:
+                        # Chunk into ~500-word blocks while preserving internal newlines
+                        lines = part.split("\n")
+                        chunk, chunk_words = [], 0
+                        for line in lines:
+                            line_words = len(line.split())
+                            if chunk_words + line_words > 500 and chunk:
+                                paragraphs.append("\n".join(chunk))
+                                chunk, chunk_words = [], 0
+                            chunk.append(line)
+                            chunk_words += line_words
+                        if chunk:
+                            paragraphs.append("\n".join(chunk))
+                    else:
+                        paragraphs.append(part)
             return paragraphs
         else:
             # Default: split on single newlines (line-by-line, Gutenberg format)

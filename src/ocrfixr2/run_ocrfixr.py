@@ -12,6 +12,14 @@ tf_logging.set_verbosity_error()
 
 logger = logging.getLogger("ocrfixr2")
 
+# Configure logger with a default handler so CLI output is visible
+# Users can override by configuring the "ocrfixr2" logger externally
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)-8s %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+
 
 def main():
 

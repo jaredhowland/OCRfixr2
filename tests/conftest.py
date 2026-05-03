@@ -7,8 +7,14 @@ import pytest
 def mock_bert():
     """Mock the BERT fill-mask pipeline to avoid loading the real model in CI.
 
-    Returns a context manager that patches `_get_unmasker()` to return a mock
-    pipeline that yields predictable token suggestions.
+    Returns a factory function that creates a mock pipeline callable.
+    The mock pipeline yields predictable token suggestions.
+
+    Usage:
+        def test_something(mock_bert):
+            pipeline_factory = mock_bert()
+            with patch('ocrfixr2.spellcheck._get_unmasker', return_value=pipeline_factory()):
+                ...
     """
 
     def _make_mock_pipeline(suggestions=None):

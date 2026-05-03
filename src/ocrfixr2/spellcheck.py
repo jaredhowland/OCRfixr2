@@ -1,19 +1,33 @@
-"""Main module."""
+"""Main module.
+
+OCR spellchecker using SymSpell + BERT dual-verification.
+
+Concurrency note:
+    The BERT pipeline is a module-level singleton loaded lazily on first use.
+    This module is **not** thread-safe. Do not call ``spellcheck().fix()``
+    from multiple threads concurrently. For parallel processing of large
+    texts, use separate processes (each gets its own model instance) or
+    process the text sequentially in chunks.
+"""
 
 import re
 import string
 import ast
+import logging
 import importlib.resources as importlib_resources
 from collections import Counter
 from typing import Dict, Any
 import os
 from pathlib import Path
-from transformers import pipeline, logging, AutoTokenizer, AutoModelForMaskedLM
+from transformers import pipeline, logging as tf_logging, AutoTokenizer, AutoModelForMaskedLM
 from symspellpy import SymSpell, Verbosity
 from metaphone import doublemetaphone
 
+# Module-level logger
+logger = logging.getLogger("ocrfixr2")
+
 # Reduce transformer verbosity after imports
-logging.set_verbosity_error()
+tf_logging.set_verbosity_error()
 
 
 ### Load in project resources
@@ -106,6 +120,7 @@ class spellcheck:
         top_k=15,
         return_context="F",
         suggest_unsplit="T",
+        full_paragraphs="F",
     ):
         self.text = text
         self.changes_by_paragraph = changes_by_paragraph
@@ -116,6 +131,7 @@ class spellcheck:
         self.top_k = top_k
         self.return_context = return_context
         self.suggest_unsplit = suggest_unsplit
+        self.full_paragraphs = full_paragraphs
 
     ### DEFINE ALL HELPER FUNCTIONS
     # ------------------------------------------------------
@@ -123,8 +139,24 @@ class spellcheck:
     def _SPLIT_PARAGRAPHS(self, text):
         # Separate string into paragraphs - this keeps local context for BERT, just in smaller chunks
         # If needed, split up excessively long paragraphs - BERT model errors out when >512 words, so break long paragraphs at 500 words
-        tokens = re.findall("[^\n]+\n{0,}|(?:\\w+\\s+[^\n]){500}", text)
-        return tokens
+        if self.full_paragraphs == "T":
+            # Split on double-newlines (true paragraph boundaries)
+            # Preserve the double-newline separators so output structure is maintained
+            raw_paragraphs = re.split(r"(\n{2,})", text)
+            paragraphs = []
+            for part in raw_paragraphs:
+                if re.match(r"^\n{2,}$", part):
+                    # This is a separator, keep it as-is
+                    paragraphs.append(part)
+                else:
+                    # Split long paragraphs at 500 words to stay within BERT's context window
+                    chunks = re.findall(r"[^\n]+\n{0,}|(?:\w+\s+[^\n]){500}", part)
+                    paragraphs.extend(chunks)
+            return paragraphs
+        else:
+            # Default: split on single newlines (line-by-line, Gutenberg format)
+            tokens = re.findall(r"[^\n]+\n{0,}|(?:\w+\s+[^\n]){500}", text)
+            return tokens
 
     # Find all mispelled words in a passage.
     # Note: OCRfixr ignores all words with leading uppercasing (including ALL CAPS), as these are assumed to be proper nouns, which fall outside of the scope of what a dictionary-based approach can accomplish.
@@ -580,6 +612,7 @@ class spellcheck:
                     top_k=self.top_k,
                     return_context=self.return_context,
                     suggest_unsplit=self.suggest_unsplit,
+                    full_paragraphs=self.full_paragraphs,
                 ).SINGLE_STRING_FIX()
             )
 

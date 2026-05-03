@@ -414,9 +414,9 @@ class spellcheck:
             context_frame,
             wrap="word",
             yscrollcommand=context_scroll.set,
-            font=("arial", 13),
-            height=20,
-            width=45,
+            font=("arial", 12),
+            height=12,
+            width=42,
             padx=5,
             pady=5,
         )
@@ -447,7 +447,7 @@ class spellcheck:
 
         # Buttons row
         btn_frame = ttk.Frame(right_frame)
-        btn_frame.grid(row=4, column=0, sticky=(tk.W), padx=5, pady=20)
+        btn_frame.grid(row=4, column=0, sticky=(tk.W), padx=5, pady=10)
         ttk.Button(btn_frame, text="Update", command=___PRESS_UPDATE).grid(
             row=0, column=0, padx=2
         )

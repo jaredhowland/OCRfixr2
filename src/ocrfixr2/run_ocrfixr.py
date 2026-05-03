@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""OCRfixr2 CLI entry point with batch, parallel, and dry-run support."""
+
 import argparse
+import glob
 import logging
+import multiprocessing as mp
+import os
 import re
-from tqdm import tqdm
+import sys
+from pathlib import Path
 from collections import Counter
+from tqdm import tqdm
 from transformers import logging as tf_logging
 
 tf_logging.set_verbosity_error()
@@ -21,15 +28,131 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 
-def main():
+def _process_single_file(args_tuple):
+    """Worker function for processing a single file.
 
+    Returns (input_path, output_path, suggestions, error) tuple.
+    """
+    input_path, output_path, warp10, context_fl, ignored_words, \
+        dry_run, confidence_threshold, custom_dict_words = args_tuple
+
+    try:
+        from ocrfixr2 import spellcheck, unsplit
+
+        # Read input file
+        with open(input_path, "r", encoding="utf-8") as f:
+            full_book = f.read()
+
+        # Check for split words
+        if len(re.findall("[A-z]-\n", full_book)) > 30:
+            logger.info(f"  Merging split words in {os.path.basename(input_path)}...")
+            fixed_text = unsplit(full_book).fix()
+            data = fixed_text.split("\n")
+        else:
+            data = full_book.split("\n")
+
+        # Add line numbers
+        q = []
+        for number, line in enumerate(data):
+            q.append("%d:  %s" % (number + 1, line))
+
+        # Warp10: ignore words appearing 10+ times
+        if warp10:
+            M = spellcheck(full_book)._LIST_MISREADS()
+            M = [word for word in M if len(word) > 3]
+            counts = dict(Counter(M))
+            counts = dict(sorted(counts.items(), key=lambda item: -item[1]))
+            over_ten = {k: v for (k, v) in counts.items() if v >= 10}
+            if over_ten:
+                logger.info(
+                    f"  Ignoring {len(over_ten)} frequent unrecognized words in "
+                    f"{os.path.basename(input_path)}"
+                )
+                ignored_words = ignored_words + list(over_ten.keys())
+
+        # Run spellcheck on each line
+        suggestions = []
+        for line_entry in q:
+            fixes = spellcheck(
+                line_entry,
+                changes_by_paragraph="T",
+                return_context=context_fl,
+                ignore_words=ignored_words,
+                confidence_threshold=confidence_threshold,
+                custom_dict=custom_dict_words,
+            ).fix()
+            if fixes == "NOTE: No changes made to text":
+                continue
+            for x in fixes.split("\n"):
+                suggestions.append(
+                    "".join((" ".join(re.findall("^[0-9]+:", line_entry)), x))
+                )
+
+        # Write output file (unless dry-run)
+        if not dry_run:
+            with open(output_path, "w", encoding="utf-8") as f:
+                for item in suggestions:
+                    f.write(item + "\n")
+
+        return (input_path, output_path, suggestions, None)
+
+    except Exception as e:
+        logger.error(f"  Error processing {input_path}: {e}")
+        return (input_path, output_path, [], str(e))
+
+
+def _resolve_input_files(text_arg):
+    """Resolve input file(s) from argument.
+
+    Supports:
+    - Single file path
+    - Glob patterns (*.txt, dir/*.txt)
+    - File list (one path per line)
+    - Directory (recursively finds all .txt files)
+    """
+    path = Path(text_arg)
+
+    # If it's a file listing paths, expand it
+    if path.is_file() and path.suffix == ".lst":
+        with open(path, "r", encoding="utf-8") as f:
+            files = [line.strip() for line in f if line.strip()]
+        return files
+
+    # Directory - find all .txt files (check before glob)
+    if path.is_dir():
+        return [str(p) for p in path.rglob("*.txt")]
+
+    # Try glob expansion (e.g., *.txt, dir/*.txt)
+    expanded = glob.glob(str(path))
+    if expanded:
+        # Filter to only files (not directories)
+        return [f for f in expanded if Path(f).is_file()]
+
+    # Single file
+    if path.is_file():
+        return [str(path)]
+
+    return [str(path)]
+
+
+def main():
     parser = argparse.ArgumentParser(
         prog="ocrfixr2",
         description="Provides context-based spellcheck suggestions for input text.",
     )
 
-    parser.add_argument("text", help="path to text you want to spellcheck")
-    parser.add_argument("outfile", help="path to output file")
+    parser.add_argument(
+        "text",
+        help="path to text file(s) to spellcheck. Supports glob patterns, "
+        "directories, or .lst files containing paths.",
+    )
+    parser.add_argument(
+        "outfile",
+        nargs="?",
+        default=None,
+        help="path to output file. If multiple inputs, use pattern like "
+        "'output_%%(basename)s.txt'. For dry-run, output goes to stdout.",
+    )
     parser.add_argument(
         "-Warp10",
         action="store_const",
@@ -54,109 +177,158 @@ def main():
         dest="misspells",
         help="option to return all of the words OCRfixr didn't recognize.",
     )
+    # T14: Dry-run mode
+    parser.add_argument(
+        "-dry-run",
+        "--dry-run",
+        action="store_const",
+        const=True,
+        default=False,
+        dest="dry_run",
+        help="show suggestions without writing output files.",
+    )
+    # T11: Confidence threshold
+    parser.add_argument(
+        "-confidence",
+        "--confidence",
+        type=float,
+        default=0.0,
+        dest="confidence_threshold",
+        help="minimum BERT confidence score to accept a suggestion (0.0-1.0). "
+        "Default: 0.0 (accept all).",
+    )
+    # T12: Custom dictionary
+    parser.add_argument(
+        "-dict",
+        "--dict",
+        type=str,
+        default=None,
+        dest="custom_dict",
+        help="path to custom word list file (one word per line). "
+        "Words in this file are treated as valid.",
+    )
+    # T13: Parallel processing
+    parser.add_argument(
+        "-parallel",
+        "--parallel",
+        type=int,
+        default=1,
+        dest="parallel",
+        help="number of parallel workers for processing. "
+        "Default: 1 (sequential).",
+    )
 
     args = parser.parse_args()
 
-    ### Read in file ============================================================
-    # read in full file to check if the text has split words (which will cause false misreads to show up)
-    # -- do this first to throw error early if file is invalid
-    logger.info("Loading text....")
-    Full_Book = open(args.text, "r", encoding="utf-8").read()
+    # T12: Load custom dictionary if provided
+    custom_dict_words = None
+    if args.custom_dict:
+        dict_path = Path(args.custom_dict)
+        if not dict_path.is_file():
+            logger.error(f"Custom dictionary file not found: {args.custom_dict}")
+            sys.exit(1)
+        with open(dict_path, "r", encoding="utf-8") as f:
+            custom_dict_words = [line.strip().lower() for line in f if line.strip()]
+        logger.info(f"Loaded {len(custom_dict_words)} words from custom dictionary")
 
-    if len(re.findall("[A-z]-\n", Full_Book)) > 30:
-        logger.warning(
-            "This file appears to have words split across lines, which can cause issues with the spellchecker"
-        )
-        logger.info("Merging split words back together...")
-        from ocrfixr2 import unsplit
+    # T10: Resolve input files
+    input_files = _resolve_input_files(args.text)
+    if not input_files:
+        logger.error(f"No input files found matching: {args.text}")
+        sys.exit(1)
 
-        fixed_text = unsplit(Full_Book).fix()
-        data = fixed_text.split("\n")
-    else:
-        data = Full_Book.split("\n")
+    logger.info(f"Processing {len(input_files)} file(s)...")
 
-    from ocrfixr2 import spellcheck
+    # Build output paths
+    def _make_output_path(input_path):
+        """Generate output path from input path."""
+        if args.outfile:
+            # Use pattern with basename substitution
+            basename = Path(input_path).stem
+            return args.outfile.replace("%%(basename)s", basename)
+        else:
+            # Default: same name with .suggestions suffix
+            return str(Path(input_path).with_suffix("")) + ".suggestions"
 
-    # Add line numbers
-    q = []
-    for number, line in enumerate(data):
-        q.append("%d:  %s" % (number + 1, line))
-
-    # Define misspells counter function
-    # Used by both -Warp10 and -misspells flags
-    def ct_misspells(text, min_len):
-        M = spellcheck(text)._LIST_MISREADS()
-        M = [word for word in M if len(word) > min_len]
-        counts = dict(Counter(M))
-        counts = dict(sorted(counts.items(), key=lambda item: -item[1]))
-        return counts
-
-    ### Misspells Option ============================================================
-    # Have OCRfixr just output a list of all the words it checked (ranked by frequency), rather than spellchecking
-    # This is intended as a diagnostic measure to see if OCRfixr is missing a large number of suggestions for valid (fixable) words
-
+    # Handle -misspells flag (legacy behavior: single file, list all unrecognized words)
     if args.misspells:
-        counts = ct_misspells(Full_Book, 0)
-        with open(args.outfile, "w", encoding="utf-8") as f:
-            for key, value in counts.items():
-                f.write("%s:%s\n" % (key, value))
-        logger.info("File has been written to " + args.outfile)
+        from ocrfixr2 import spellcheck
 
-        # for this path, don't continue any further
+        for input_path in input_files:
+            with open(input_path, "r", encoding="utf-8") as f:
+                full_book = f.read()
+            M = spellcheck(full_book)._LIST_MISREADS()
+            counts = dict(Counter(M))
+            counts = dict(sorted(counts.items(), key=lambda item: -item[1]))
+
+            output_path = _make_output_path(input_path) if args.outfile else None
+            if output_path:
+                with open(output_path, "w", encoding="utf-8") as f:
+                    for key, value in counts.items():
+                        f.write(f"{key}:{value}\n")
+                logger.info(f"File has been written to {output_path}")
+            else:
+                for key, value in counts.items():
+                    print(f"{key}:{value}")
         return
 
-    ### WARP10 Option ============================================================
-    # Have OCRfixr ignore any word (>3 characters long) that pops up 10+ times
-    # This allows for unrecognized words that are likely correct to be left alone, since they show up consistently in the text
-    # OCRfixr runs fewer check cycles = faster execution
-
-    if args.Warp10:
-        logger.info("Engaging Warp10!")
-        counts = ct_misspells(Full_Book, 3)
-        over_ten = {key: value for (key, value) in counts.items() if value >= 10}
-
-        logger.info(
-            "To speed things up, OCRfixr will ignore the following unrecognized words that popped up 10 or more times in the text:"
-        )
-        if len(over_ten) == 0:
-            logger.info("NO WORDS IGNORED!")
+    # Build output paths
+    def _make_output_path(input_path):
+        """Generate output path from input path."""
+        if args.outfile:
+            # Use pattern with basename substitution
+            basename = Path(input_path).stem
+            return args.outfile.replace("%%(basename)s", basename)
         else:
-            for k, v in over_ten.items():
-                logger.info(f"{k} --> {v}")
-        ignored_words = list(over_ten.keys())
+            # Default: same name with .suggestions suffix
+            return str(Path(input_path).with_suffix("")) + ".suggestions"
 
+    # Prepare arguments for each file
+    file_args = []
+    for input_path in input_files:
+        output_path = _make_output_path(input_path)
+        file_args.append((
+            input_path,
+            output_path,
+            args.Warp10,
+            "T" if args.context else "F",
+            [],  # ignored_words (populated per-file for Warp10)
+            args.dry_run,
+            args.confidence_threshold,
+            custom_dict_words,
+        ))
+
+    # T13: Process files (sequentially or in parallel)
+    if args.parallel > 1 and len(file_args) > 1:
+        logger.info(f"Using {args.parallel} parallel workers...")
+        with mp.Pool(processes=min(args.parallel, len(file_args))) as pool:
+            results = pool.map(_process_single_file, file_args)
     else:
-        ignored_words = []
+        # Sequential processing with progress bar
+        results = []
+        for args_tuple in tqdm(file_args, desc="Processing files"):
+            result = _process_single_file(args_tuple)
+            results.append(result)
 
-    if args.context:
-        context_fl = "T"
-    else:
-        context_fl = "F"
-
-    ### Run spellcheck on each line ==================================================
-    logger.info("Running spellcheck....")
-
-    suggestions = []
-    for i in tqdm(q):
-        fixes = spellcheck(
-            i,
-            changes_by_paragraph="T",
-            return_context=context_fl,
-            ignore_words=ignored_words,
-        ).fix()
-        if fixes == "NOTE: No changes made to text":
-            pass
+    # Report results
+    total_suggestions = 0
+    errors = 0
+    for input_path, output_path, suggestions, error in results:
+        if error:
+            logger.error(f"  {input_path}: {error}")
+            errors += 1
         else:
-            for x in fixes.split("\n"):
-                suggestions.append("".join((" ".join(re.findall("^[0-9]+:", i)), x)))
+            total_suggestions += len(suggestions)
+            status = "dry-run" if args.dry_run else f"written to {output_path}"
+            logger.info(
+                f"  {os.path.basename(input_path)}: "
+                f"{len(suggestions)} suggestion(s) {status}"
+            )
 
-    ### Output file =================================================================
-    file = open(args.outfile, "w", encoding="utf-8")
-    for items in suggestions:
-        file.writelines(items + "\n")
-    file.close()
-
-    logger.info("File has been written to " + args.outfile)
+    logger.info(
+        f"Complete: {total_suggestions} total suggestion(s), "
+        f"{errors} error(s)"
+    )
 
 
 if __name__ == "__main__":

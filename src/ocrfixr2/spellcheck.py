@@ -121,6 +121,8 @@ class spellcheck:
         return_context="F",
         suggest_unsplit="T",
         full_paragraphs="F",
+        custom_dict=None,
+        confidence_threshold=0.0,
     ):
         self.text = text
         self.changes_by_paragraph = changes_by_paragraph
@@ -132,6 +134,10 @@ class spellcheck:
         self.return_context = return_context
         self.suggest_unsplit = suggest_unsplit
         self.full_paragraphs = full_paragraphs
+        # T12: Custom dictionary support
+        self.custom_dict = set(custom_dict) if custom_dict else set()
+        # T11: Confidence scoring threshold (0.0 = no threshold)
+        self.confidence_threshold = confidence_threshold
 
     ### DEFINE ALL HELPER FUNCTIONS
     # ------------------------------------------------------
@@ -213,9 +219,10 @@ class spellcheck:
         ]
 
         # if a word is not in the SCOWL 70 word list, it is assumed to be a misspelling.
+        # T12: also check custom dictionary if provided
         unrecognized = []
         for i in words_to_check:
-            if i not in word_set:
+            if i not in word_set and i not in self.custom_dict:
                 unrecognized.append(i)
 
         # throw away any paragraphs where > 30% of the words are unrecognized - this makes context-generation spotty AND likely indicates a messy post-script/footnote, or even another language. This limits trigger-happy changes to messy text.
@@ -286,6 +293,30 @@ class spellcheck:
             :number_to_return
         ]
         return suggested_words
+
+    # T11: Return BERT confidence scores for suggestions
+    def __SUGGEST_BERT_WITH_SCORES(self, text, number_to_return=15):
+        """Return BERT suggestions with their confidence scores.
+
+        Returns a list of dicts: [{"token_str": "word", "score": 0.45}, ...]
+        """
+        context_suggest = _get_unmasker()(text)
+        return context_suggest[:number_to_return]
+
+    # T11: Compute confidence score for a correction suggestion
+    def _COMPUTE_CONFIDENCE(self, misread_word, suggestion, text):
+        """Compute BERT confidence score for a specific correction.
+
+        Returns the BERT token score for the suggested word, or 0.0 if not found.
+        """
+        bert_results = self.__SUGGEST_BERT_WITH_SCORES(
+            text=self.__SET_MASK(misread_word, "[MASK]", text),
+            number_to_return=self.top_k,
+        )
+        for result in bert_results:
+            if result.get("token_str") == suggestion:
+                return result.get("score", 0.0)
+        return 0.0
 
     # Ensure that list items are correctly converted down without the []
     def __LIST_TO_STR(self, LIST):
@@ -510,6 +541,19 @@ class spellcheck:
 
         fixes = dict(zip(misreads, corr))
 
+        # T11: Apply confidence threshold filter
+        if self.confidence_threshold > 0.0:
+            to_remove = []
+            for key, value in fixes.items():
+                if not value:
+                    continue
+                # Compute BERT confidence for this correction
+                confidence = self._COMPUTE_CONFIDENCE(key, value, self.text)
+                if confidence < self.confidence_threshold:
+                    to_remove.append(key)
+            for key in to_remove:
+                del fixes[key]
+
         try:
             for key, value in fixes.copy().items():
                 # if it's a simple "remove an 's' from the end", (kissings --> kissing) then delete that fix
@@ -629,6 +673,8 @@ class spellcheck:
                     return_context=self.return_context,
                     suggest_unsplit=self.suggest_unsplit,
                     full_paragraphs=self.full_paragraphs,
+                    custom_dict=self.custom_dict,
+                    confidence_threshold=self.confidence_threshold,
                 ).SINGLE_STRING_FIX()
             )
 

@@ -394,6 +394,15 @@ class spellcheck:
         root.title("Spellcheck Suggestion")
         root.bind("<Escape>", ___ON_ESCAPE)
 
+        # Pin window to center of screen with fixed size so it doesn't jump
+        sw = root.winfo_screenwidth()
+        sh = root.winfo_screenheight()
+        ww, wh = 700, 350
+        x = (sw - ww) // 2
+        y = (sh - wh) // 2
+        root.geometry(f"{ww}x{wh}+{x}+{y}")
+        root.resizable(False, False)
+
         content = ttk.Frame(root, padding=(3, 3, 12, 15))
         frame = ttk.Frame(content, borderwidth=5, relief="ridge", width=500, height=75)
         context = ttk.Label(content, text=self.___INSERT_NEWLINES(context))

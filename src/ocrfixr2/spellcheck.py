@@ -394,6 +394,7 @@ class spellcheck:
         """Show suggestion dialog. Returns True=update, False=ignore, None=cancel all."""
 
         import tkinter as tk
+        from tkinter import font
         from tkinter import ttk
 
         # Use a closure variable to capture the user's choice; default to False (ignore)
@@ -439,7 +440,7 @@ class spellcheck:
         root.resizable(False, False)
 
         # System default font
-        system_font = tk.font.nametofont("TkDefaultFont")
+        system_font = font.nametofont("TkDefaultFont")
         font_family = system_font.actual()["family"]
 
         # Top-level frame with grid layout: left=scrollable context, right=suggestion+buttons

@@ -385,7 +385,17 @@ class spellcheck:
         """Load interactive decisions from a JSON file."""
         import json
 
-        data = json.loads(Path(self.progress_file).read_text(encoding="utf-8"))
+        if not self.progress_file:
+            return {}
+        try:
+            text = Path(self.progress_file).read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return {}
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning(f"Could not parse progress file {self.progress_file}")
+            return {}
         decisions = data.get("decisions", {})
         logger.info(f"Loaded {len(decisions)} saved decision(s) from {self.progress_file}")
         return decisions

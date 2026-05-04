@@ -106,3 +106,4 @@ ENV/
 
 .DS_Store
 src/ocrfixr2/model_cache/*
+.compound-engineering/*.local.yaml
